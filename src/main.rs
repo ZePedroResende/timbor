@@ -17,17 +17,6 @@ struct Opts {
     url: String,
 }
 
-#[derive(Clone, Debug, EthEvent)]
-struct Transfer {
-    from: Address,
-    to: Address,
-    id: U256,
-}
-fn parse_address(addr: &str) -> Address {
-    let addr = addr.strip_prefix("0x").unwrap_or(addr);
-    addr.parse().unwrap()
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
@@ -39,27 +28,32 @@ async fn main() -> anyhow::Result<()> {
     let provider = Arc::new(provider);
 
     let last_block = provider
-        .get_block(BlockNumber::Number(U64::from(14029156)))
+        .get_block(BlockNumber::Number(U64::from(13965258)))
         .await?
         .unwrap()
         .number
         .unwrap();
 
-    let erc20_transfer_filter = Filter::new()
+    let address: Address = "0x5738379364fab26c7e044c02ded4ceef93333d84".parse()?;
+    let erc721_transfer_filter = Filter::new()
         .from_block(last_block)
+        .address(address)
         .topic0(ValueOrArray::Value(H256::from(keccak256(
             "Transfer(address,address,uint256)",
         ))));
 
-    let mut stream = provider.get_logs_paginated(&erc20_transfer_filter, 100);
+    let mut stream = provider.subscribe_logs(&erc721_transfer_filter).await?;
 
-    while let Some(res) = stream.next().await {
-        let log = res?;
-
-        let address = parse_address("0x5738379364Fab26c7e044c02deD4ceef93333D84");
-        if log.address == address {
-            println!("{:?}", log);
-        }
+    while let Some(log) = stream.next().await {
+        println!(
+            "block: {:?}, tx: {:?}, token: {:?}, from: {:?}, to: {:?}, id: {:?}",
+            log.block_number,
+            log.transaction_hash,
+            log.address,
+            Address::from(log.topics[1]),
+            Address::from(log.topics[2]),
+            Address::from(log.topics[3]),
+        );
     }
 
     Ok(())
